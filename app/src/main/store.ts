@@ -10,7 +10,7 @@ export type Settings = {
   sharerAspect?: number | null
 }
 
-const DEFAULTS: Settings = { serverUrl: 'http://localhost:3000' }
+const DEFAULTS: Settings = { serverUrl: 'https://remote-laser-pointer-relay.onrender.com' }
 
 function settingsFile(): string {
   return join(app.getPath('userData'), 'settings.json')

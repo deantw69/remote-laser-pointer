@@ -29,7 +29,7 @@
 ## 使用教學
 
 ### 事前準備(一次性)
-1. 部署中繼伺服器(見下方「部署」),取得網址,例如 `https://xxx.onrender.com`。
+1. 中繼伺服器已部署於 `https://remote-laser-pointer-relay.onrender.com`,**app 已內建此預設網址,免設定**;自架時才需要在 app 內改網址(見下方「部署」)。
 2. 雙方各安裝 `RemoteLaserPointer`(exe 在 `app/release/`)。
    - 未做程式碼簽章,SmartScreen 會警告:點「其他資訊 → 仍要執行」。
 
@@ -56,6 +56,7 @@
 1. 把 repo 推上 GitHub,到 [Render](https://render.com) 選 **New → Blueprint**,指向本 repo(讀取 `render.yaml`)。
 2. 完成後取得網址填入 app。
 3. 免費方案閒置會休眠,首次連線需等數十秒冷啟動。
+4. 目前的部署走「公開 repo URL」模式,push 後**不會自動部署**,需在 Render 儀表板按 **Manual sync**。
 
 ### 其他主機
 ```bash

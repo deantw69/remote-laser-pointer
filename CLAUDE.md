@@ -20,6 +20,11 @@
 - 校準採「全螢幕拉框」方式(rubber band),依分享端螢幕比例鎖定,Ctrl 可解除
 - 系統匣圖示由 `app/scripts/gen-tray-icon.mjs` 產生(純程式產 PNG,不放來源不明二進位)
 
+## 部署
+- Relay 已部署 Render free:`https://remote-laser-pointer-relay.onrender.com`(Blueprint 名稱 remote-laser-pointer)
+- Blueprint 走「公開 repo URL」模式(Render GitHub App 未授權此 repo),push 後不會自動部署,要在 Render 儀表板按 Manual sync
+- app 預設 serverUrl 即上述網址(`app/src/main/store.ts` 的 DEFAULTS)
+
 ## 環境備註
 - 這台機器 `npm install` 時 Electron 二進位解壓曾失敗(zip 有下載到 cache 但 dist 是空的):
   修法 = 手動 `Expand-Archive` cache 內的 zip 到 `node_modules/electron/dist`,再寫 `path.txt`(內容 `electron.exe`)
