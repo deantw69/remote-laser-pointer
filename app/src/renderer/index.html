@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>遠端雷射筆</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <main>
+      <section id="screen-role">
+        <h1>🔴 遠端雷射筆</h1>
+        <p class="sub">在朋友分享的畫面上直接圈點指位</p>
+        <label class="field">
+          伺服器網址
+          <input id="server-url" spellcheck="false" placeholder="https://xxx.onrender.com" />
+        </label>
+        <button id="btn-viewer" class="big">我是觀看者(出手指人)</button>
+        <button id="btn-sharer" class="big">我是分享者(被指畫面)</button>
+      </section>
+
+      <section id="screen-viewer" hidden>
+        <h2>觀看者</h2>
+        <div class="status" id="v-status">—</div>
+        <div class="card">
+          <div class="row">
+            <button id="v-create">建立房間</button>
+            <input id="v-code" placeholder="輸入房號" maxlength="6" />
+            <button id="v-join">加入</button>
+          </div>
+          <div class="room">房號 <b id="v-room-label">—</b></div>
+          <button id="v-leave" class="link">離開房間</button>
+        </div>
+        <div class="card">
+          <div class="row">
+            <button id="v-cal">校準對位</button>
+            <span id="v-cal-info">尚未校準</span>
+          </div>
+          <p class="hint">先把 Discord 開到看得到朋友的畫面,再按「校準對位」框出影片的實際影像範圍。</p>
+        </div>
+        <div class="card">
+          <div id="v-pointing">按 F8 開始指點</div>
+          <p class="hint">指點模式:點一下=圈圈、按住拖曳=畫線、移動=雷射點;Esc / F8 結束。</p>
+        </div>
+        <button id="v-back" class="link">← 返回角色選擇</button>
+      </section>
+
+      <section id="screen-sharer" hidden>
+        <h2>分享者</h2>
+        <div class="status" id="s-status">—</div>
+        <div class="card">
+          <label class="field">
+            要被標記的螢幕
+            <select id="s-display"></select>
+          </label>
+        </div>
+        <div class="card">
+          <div class="row">
+            <button id="s-create">建立房間</button>
+            <input id="s-code" placeholder="輸入房號" maxlength="6" />
+            <button id="s-join">加入</button>
+          </div>
+          <div class="room">房號 <b id="s-room-label">—</b></div>
+          <button id="s-leave" class="link">離開房間</button>
+        </div>
+        <p class="hint">加入房間後掛著即可,對方的標記會直接浮現在你的螢幕上;關閉視窗會縮到系統匣。</p>
+        <button id="s-back" class="link">← 返回角色選擇</button>
+      </section>
+    </main>
+    <script type="module" src="./src/index.ts"></script>
+  </body>
+</html>

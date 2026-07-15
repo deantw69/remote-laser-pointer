@@ -1,0 +1,135 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: #16171d;
+  color: #e8e8ee;
+  font: 14px/1.6 system-ui, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+  user-select: none;
+}
+main {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 20px 18px;
+}
+h1 {
+  font-size: 24px;
+  margin: 8px 0 2px;
+}
+h2 {
+  font-size: 18px;
+  margin: 4px 0 10px;
+}
+.sub {
+  color: #9a9aa8;
+  margin: 0 0 18px;
+}
+.card {
+  background: #1e2028;
+  border: 1px solid #2c2f3a;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
+}
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.status {
+  background: #22242e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #ffd166;
+  min-height: 20px;
+}
+.room {
+  margin-top: 10px;
+  color: #9a9aa8;
+}
+.room b {
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #ff3355;
+  font-family: Consolas, monospace;
+}
+.hint {
+  color: #8a8a98;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+.field {
+  display: block;
+  color: #9a9aa8;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+input,
+select {
+  width: 100%;
+  background: #14151b;
+  color: #e8e8ee;
+  border: 1px solid #33364a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  outline: none;
+}
+input:focus,
+select:focus {
+  border-color: #ff3355;
+}
+.row input {
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+}
+button {
+  background: #2a2d3a;
+  color: #e8e8ee;
+  border: 1px solid #3a3e52;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover {
+  background: #343850;
+}
+button.big {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+  margin: 10px 0;
+  background: #ff3355;
+  border-color: #ff3355;
+  color: #fff;
+}
+button.big:hover {
+  background: #e02a49;
+}
+button.big#btn-sharer {
+  background: #2a2d3a;
+  border-color: #3a3e52;
+  color: #e8e8ee;
+}
+button.big#btn-sharer:hover {
+  background: #343850;
+}
+button.link {
+  background: none;
+  border: none;
+  color: #8a8a98;
+  padding: 6px 0;
+  text-decoration: underline;
+}
+button.link:hover {
+  color: #e8e8ee;
+}
+#v-pointing {
+  font-weight: 600;
+}
