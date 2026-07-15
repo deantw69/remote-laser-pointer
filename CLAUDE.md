@@ -22,7 +22,7 @@
 
 ## 部署
 - Relay 已部署 Render free:`https://remote-laser-pointer-relay.onrender.com`(Blueprint 名稱 remote-laser-pointer)
-- Blueprint 走「公開 repo URL」模式(Render GitHub App 未授權此 repo),push 後不會自動部署,要在 Render 儀表板按 Manual sync
+- Render GitHub App 已授權此 repo,push 到 main 會自動部署(Auto-Deploy: On Commit;2026-07-16 已實測)
 - app 預設 serverUrl 即上述網址(`app/src/main/store.ts` 的 DEFAULTS)
 
 ## 環境備註

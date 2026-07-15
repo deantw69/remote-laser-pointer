@@ -56,7 +56,7 @@
 1. 把 repo 推上 GitHub,到 [Render](https://render.com) 選 **New → Blueprint**,指向本 repo(讀取 `render.yaml`)。
 2. 完成後取得網址填入 app。
 3. 免費方案閒置會休眠,首次連線需等數十秒冷啟動。
-4. 目前的部署走「公開 repo URL」模式,push 後**不會自動部署**,需在 Render 儀表板按 **Manual sync**。
+4. GitHub repo 已授權給 Render App,push 到 `main` 會**自動部署**(Auto-Deploy: On Commit)。
 
 ### 其他主機
 ```bash
