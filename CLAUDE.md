@@ -18,7 +18,7 @@
 - 全域切換指點模式(Electron globalShortcut 無 keyup 事件,故用切換制,不做「按住即用」);Windows=F8,macOS=Cmd+Shift+L(F8 在 mac 預設是媒體鍵)。切換鍵定義在 main 的 `TOGGLE_HOTKEY`,顯示標籤在 preload 的 `hotkeyLabel`,兩者須一致
 - 設定存 `userData/settings.json`(自寫 store:`app/src/main/store.ts`,不用 electron-store)
 - 校準採「全螢幕拉框」方式(rubber band),依分享端螢幕比例鎖定,Ctrl 可解除
-- 系統匣圖示由 `app/scripts/gen-tray-icon.mjs` 產生(純程式產 PNG,不放來源不明二進位)
+- 系統匣圖示由 `app/scripts/gen-tray-icon.mjs` 產生;app 圖示由 `app/scripts/gen-app-icon.mjs`(產 `build/icon.png`)+ `app/scripts/gen-icns.sh`(sips/iconutil 轉 `build/icon.icns`)產生,`npm run icon` 一鍵重生(皆純程式產生,不放來源不明二進位)
 
 ## 部署
 - Relay 已部署 Render free:`https://remote-laser-pointer-relay.onrender.com`(Blueprint 名稱 remote-laser-pointer)
@@ -33,6 +33,6 @@
 
 ## 注意
 - 支援 Windows 與 macOS;獨占全螢幕遊戲蓋不住 overlay
-- macOS 打包用 `build:mac`(dmg+zip),electron-builder 設 `identity: null` 跳過簽章(未簽章,Gatekeeper 會擋,右鍵→打開);系統匣圖示在 mac 以 template image 呈現;無 .icns,app 圖示暫用 Electron 預設
+- macOS 打包用 `build:mac`(dmg+zip),electron-builder 設 `identity: null` 跳過簽章(未簽章,Gatekeeper 會擋,右鍵→打開);系統匣圖示在 mac 以 template image 呈現;app 圖示為 `build/icon.icns`(產生方式見上「關鍵決策」),electron-builder 由 `mac.icon` 指定
 - MVP 假設分享者分享「整個螢幕」;單一視窗對位列為後續
 - exe 未簽章,SmartScreen 會警告

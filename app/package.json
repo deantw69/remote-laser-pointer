@@ -10,7 +10,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "build:win": "electron-vite build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac"
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "icon": "node scripts/gen-app-icon.mjs && bash scripts/gen-icns.sh"
   },
   "dependencies": {
     "socket.io-client": "^4.8.0"
@@ -40,6 +41,7 @@
       "perMachine": false
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
