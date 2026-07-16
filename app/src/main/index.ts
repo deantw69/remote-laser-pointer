@@ -1,6 +1,7 @@
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
+import { uIOhook } from 'uiohook-napi'
 import { Socket, io } from 'socket.io-client'
 import type { AppStatus, Mark, MetaEvent, Role, RoomInfo } from '../shared/protocol'
 import { loadSettings, saveSettings } from './store'
@@ -158,6 +159,15 @@ function overlayWindowOptions(bounds: Rect): Electron.BrowserWindowConstructorOp
   }
 }
 
+// 建立 overlay 視窗:Windows 上 transparent 無邊框視窗在建構當下,高度會被
+// WM_GETMINMAXINFO 依「最大追蹤尺寸=工作區」夾掉工作列那條(只夾高不夾寬),
+// 導致蓋不到工作列。建立後再 setBounds(走 SetWindowPos,不受該夾限)強制設回整個螢幕。
+function createOverlayWindow(bounds: Rect, extra?: Electron.BrowserWindowConstructorOptions): BrowserWindow {
+  const win = new BrowserWindow({ ...overlayWindowOptions(bounds), ...extra })
+  win.setBounds(bounds)
+  return win
+}
+
 function sendMeta(): void {
   if (state.role !== 'sharer' || !socket?.connected || !state.roomName) return
   const d = getSelectedDisplay()
@@ -181,7 +191,7 @@ function ensureOverlay(): void {
     overlayWin.setBounds(b)
     return
   }
-  overlayWin = new BrowserWindow({ ...overlayWindowOptions(b), focusable: false })
+  overlayWin = createOverlayWindow(b, { focusable: false })
   pinOverlayOnTop(overlayWin)
   overlayWin.setIgnoreMouseEvents(true)
   overlayWin.on('closed', () => {
@@ -195,10 +205,106 @@ function destroyOverlay(): void {
   overlayWin = null
 }
 
+// ---- 全域滑鼠 hook(指點輸入)----
+// 指點窗改為點擊穿透(不遮擋下層重繪),改由此 hook 讀全域滑鼠。
+// hook 座標為實體像素 → screenToDipPoint 轉 DIP → 相對 calRect 正規化 0~1。
+// 手勢與 pointer.ts 舊版一致:移動=雷射點、點一下=圈圈(ping)、拖曳=畫線(stroke)。
+const DRAG_THRESHOLD_DIP = 4
+const LASER_INTERVAL_MS = 33
+const STROKE_INTERVAL_MS = 16
+let hookRunning = false
+let downDip: { x: number; y: number } | null = null
+let strokeActive = false
+let lastLaser = 0
+let lastStrokePt = 0
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v))
+}
+function normCal(p: { x: number; y: number }): { x: number; y: number } {
+  const r = state.calRect!
+  return { x: clamp01((p.x - r.x) / r.width), y: clamp01((p.y - r.y) / r.height) }
+}
+function insideCal(p: { x: number; y: number }): boolean {
+  const r = state.calRect!
+  return p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height
+}
+function emitMark(m: Mark): void {
+  if (socket?.connected) socket.emit('pointer', m)
+  if (pointerWin && !pointerWin.isDestroyed()) pointerWin.webContents.send('pointer:echo', m)
+}
+
+function onHookMouseDown(e: { x: number; y: number; button: unknown }): void {
+  if (!state.pointing || !state.calRect || e.button !== 1) return
+  const p = screen.screenToDipPoint({ x: e.x, y: e.y })
+  if (!insideCal(p)) return // 只在 calRect 內起手
+  downDip = p
+  strokeActive = false
+}
+function onHookMouseMove(e: { x: number; y: number }): void {
+  if (!state.pointing || !state.calRect) return
+  const now = Date.now()
+  const dip = screen.screenToDipPoint({ x: e.x, y: e.y })
+  if (downDip && !strokeActive) {
+    // 超過門檻才開始畫線(否則視為點一下)
+    if (Math.hypot(dip.x - downDip.x, dip.y - downDip.y) > DRAG_THRESHOLD_DIP) {
+      strokeActive = true
+      emitMark({ t: 'stroke-start', ...normCal(downDip) })
+      emitMark({ t: 'stroke-point', ...normCal(dip) })
+      lastStrokePt = now
+    }
+  } else if (strokeActive) {
+    if (now - lastStrokePt >= STROKE_INTERVAL_MS) {
+      emitMark({ t: 'stroke-point', ...normCal(dip) })
+      lastStrokePt = now
+    }
+  } else {
+    // 無按鍵:雷射點,只在 calRect 內
+    if (!insideCal(dip) || now - lastLaser < LASER_INTERVAL_MS) return
+    lastLaser = now
+    emitMark({ t: 'laser', ...normCal(dip) })
+  }
+}
+function onHookMouseUp(e: { x: number; y: number; button: unknown }): void {
+  if (!state.pointing || !state.calRect || e.button !== 1) return
+  if (strokeActive) {
+    emitMark({ t: 'stroke-end' })
+    strokeActive = false
+  } else if (downDip) {
+    emitMark({ t: 'ping', ...normCal(screen.screenToDipPoint({ x: e.x, y: e.y })) })
+  }
+  downDip = null
+}
+
+function startHook(): void {
+  if (hookRunning) return
+  downDip = null
+  strokeActive = false
+  uIOhook.on('mousedown', onHookMouseDown)
+  uIOhook.on('mousemove', onHookMouseMove)
+  uIOhook.on('mouseup', onHookMouseUp)
+  uIOhook.start()
+  hookRunning = true
+}
+function stopHook(): void {
+  if (!hookRunning) return
+  uIOhook.removeAllListeners()
+  try {
+    uIOhook.stop()
+  } catch {
+    // ignore
+  }
+  hookRunning = false
+}
+
 // ---- 觀看者端:指點模式視窗(蓋在校準範圍上) ----
 function startPointing(): void {
   if (state.role !== 'viewer' || state.pointing || !state.calRect) return
-  pointerWin = new BrowserWindow(overlayWindowOptions(state.calRect))
+  // 指點範圍要跟校準一致(含工作列),故用 createOverlayWindow 撐滿(繞過工作區夾限)。
+  // 點擊穿透 + focusable:false:視窗不遮擋也不搶焦點,下層影像不再被凍;
+  // 滑鼠改由全域 hook 讀取(見 startHook),視窗只負責畫本地紅點回顯。
+  pointerWin = createOverlayWindow(state.calRect, { focusable: false })
+  pointerWin.setIgnoreMouseEvents(true)
   pinOverlayOnTop(pointerWin)
   pointerWin.on('closed', () => {
     pointerWin = null
@@ -207,8 +313,9 @@ function startPointing(): void {
       broadcast()
     }
   })
-  pointerWin.webContents.on('did-finish-load', () => pointerWin?.focus())
   loadPage(pointerWin, 'pointer')
+  globalShortcut.register('Escape', () => stopPointing())
+  startHook()
   state.pointing = true
   broadcast()
 }
@@ -216,6 +323,8 @@ function startPointing(): void {
 function stopPointing(): void {
   if (!state.pointing && !pointerWin) return
   state.pointing = false
+  stopHook()
+  globalShortcut.unregister('Escape')
   if (socket?.connected) {
     socket.emit('pointer', { t: 'stroke-end' } satisfies Mark)
     socket.emit('pointer', { t: 'laser-off' } satisfies Mark)
@@ -249,7 +358,7 @@ function openCalibration(target: 'viewer' | 'sharer'): void {
       : state.calRect
   const aspect = target === 'sharer' ? null : state.sharerAspect
 
-  calWin = new BrowserWindow(overlayWindowOptions(d.bounds))
+  calWin = createOverlayWindow(d.bounds)
   pinOverlayOnTop(calWin)
   calWin.on('closed', () => {
     calWin = null

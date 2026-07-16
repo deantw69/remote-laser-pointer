@@ -14,7 +14,8 @@
     "icon": "node scripts/gen-app-icon.mjs && bash scripts/gen-icns.sh"
   },
   "dependencies": {
-    "socket.io-client": "^4.8.0"
+    "socket.io-client": "^4.8.0",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -30,6 +31,11 @@
     "directories": {
       "output": "release"
     },
+    "asarUnpack": [
+      "**/*.node",
+      "**/node_modules/uiohook-napi/**",
+      "**/node_modules/node-gyp-build/**"
+    ],
     "win": {
       "target": [
         "nsis",
