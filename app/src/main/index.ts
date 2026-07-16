@@ -1,7 +1,6 @@
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
-import { uIOhook } from 'uiohook-napi'
 import { installClickSuppressor, setSuppress, uninstallClickSuppressor } from './clickSuppressor'
 import { Socket, io } from 'socket.io-client'
 import type { AppStatus, Mark, MetaEvent, Role, RoomInfo } from '../shared/protocol'
@@ -165,7 +164,7 @@ function overlayWindowOptions(bounds: Rect): Electron.BrowserWindowConstructorOp
 // 導致蓋不到工作列。建立後再 setBounds(走 SetWindowPos,不受該夾限)強制設回整個螢幕。
 function createOverlayWindow(bounds: Rect, extra?: Electron.BrowserWindowConstructorOptions): BrowserWindow {
   const win = new BrowserWindow({ ...overlayWindowOptions(bounds), ...extra })
-  win.setBounds(bounds)
+  if (process.platform === 'win32') win.setBounds(bounds) // 夾限修正只 win32 需要;mac 維持建構尺寸
   return win
 }
 
@@ -213,6 +212,8 @@ function destroyOverlay(): void {
 const DRAG_THRESHOLD_DIP = 4
 const LASER_INTERVAL_MS = 33
 const STROKE_INTERVAL_MS = 16
+// uiohook 只在 win32 指點時使用;延遲載入,mac 完全不碰(維持舊 DOM 驅動行為)
+let uio: typeof import('uiohook-napi').uIOhook | null = null
 let hookRunning = false
 let downDip: { x: number; y: number } | null = null
 let strokeActive = false
@@ -281,17 +282,20 @@ function startHook(): void {
   if (hookRunning) return
   downDip = null
   strokeActive = false
-  uIOhook.on('mousedown', onHookMouseDown)
-  uIOhook.on('mousemove', onHookMouseMove)
-  uIOhook.on('mouseup', onHookMouseUp)
-  uIOhook.start()
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  if (!uio) uio = require('uiohook-napi').uIOhook
+  const h = uio!
+  h.on('mousedown', onHookMouseDown)
+  h.on('mousemove', onHookMouseMove)
+  h.on('mouseup', onHookMouseUp)
+  h.start()
   hookRunning = true
 }
 function stopHook(): void {
-  if (!hookRunning) return
-  uIOhook.removeAllListeners()
+  if (!hookRunning || !uio) return
+  uio.removeAllListeners()
   try {
-    uIOhook.stop()
+    uio.stop()
   } catch {
     // ignore
   }
@@ -299,28 +303,38 @@ function stopHook(): void {
 }
 
 // ---- 觀看者端:指點模式視窗(蓋在校準範圍上) ----
+function onPointerClosed(): void {
+  pointerWin = null
+  if (state.pointing) {
+    state.pointing = false
+    broadcast()
+  }
+}
+
 function startPointing(): void {
   if (state.role !== 'viewer' || state.pointing || !state.calRect) return
-  // 指點範圍要跟校準一致(含工作列),故用 createOverlayWindow 撐滿(繞過工作區夾限)。
-  // 點擊穿透 + focusable:false:視窗不遮擋也不搶焦點,下層影像不再被凍;
-  // 滑鼠改由全域 hook 讀取(見 startHook),視窗只負責畫本地紅點回顯。
-  pointerWin = createOverlayWindow(state.calRect, { focusable: false })
-  pointerWin.setIgnoreMouseEvents(true)
-  pinOverlayOnTop(pointerWin)
-  pointerWin.on('closed', () => {
-    pointerWin = null
-    if (state.pointing) {
-      state.pointing = false
-      broadcast()
-    }
-  })
-  loadPage(pointerWin, 'pointer')
-  globalShortcut.register('Escape', () => stopPointing())
-  // 先裝點擊抑制 hook、再啟 uiohook:uiohook 較晚安裝→較早被呼叫(先驅動手勢),
-  // 抑制 hook 較早安裝→較晚被呼叫,吞掉左鍵遞送到下層
-  installClickSuppressor()
-  setSuppress(true)
-  startHook()
+  if (process.platform === 'darwin') {
+    // macOS 維持舊行為:指點窗捕捉滑鼠,DOM(pointer.ts)驅動手勢與 Esc
+    pointerWin = createOverlayWindow(state.calRect)
+    pinOverlayOnTop(pointerWin)
+    pointerWin.on('closed', onPointerClosed)
+    pointerWin.webContents.on('did-finish-load', () => pointerWin?.focus())
+    loadPage(pointerWin, 'pointer')
+  } else {
+    // win32:指點窗點擊穿透 + focusable:false(不遮擋、不搶焦點→下層不凍),
+    // 滑鼠改由全域 hook 讀取,視窗只畫本地回顯;Esc 改用暫時全域快捷鍵。
+    pointerWin = createOverlayWindow(state.calRect, { focusable: false })
+    pointerWin.setIgnoreMouseEvents(true)
+    pinOverlayOnTop(pointerWin)
+    pointerWin.on('closed', onPointerClosed)
+    loadPage(pointerWin, 'pointer')
+    globalShortcut.register('Escape', () => stopPointing())
+    // 先裝點擊抑制 hook、再啟 uiohook:uiohook 較晚安裝→較早被呼叫(先驅動手勢),
+    // 抑制 hook 較早安裝→較晚被呼叫,吞掉左鍵遞送到下層
+    installClickSuppressor()
+    setSuppress(true)
+    startHook()
+  }
   state.pointing = true
   broadcast()
 }
@@ -328,10 +342,12 @@ function startPointing(): void {
 function stopPointing(): void {
   if (!state.pointing && !pointerWin) return
   state.pointing = false
-  stopHook()
-  setSuppress(false)
-  uninstallClickSuppressor()
-  globalShortcut.unregister('Escape')
+  if (process.platform !== 'darwin') {
+    stopHook()
+    setSuppress(false)
+    uninstallClickSuppressor()
+    globalShortcut.unregister('Escape')
+  }
   if (socket?.connected) {
     socket.emit('pointer', { t: 'stroke-end' } satisfies Mark)
     socket.emit('pointer', { t: 'laser-off' } satisfies Mark)

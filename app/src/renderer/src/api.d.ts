@@ -7,6 +7,7 @@ declare global {
       send: (channel: string, ...args: unknown[]) => void
       on: (channel: string, cb: (...args: any[]) => void) => () => void
       hotkeyLabel: string
+      platform: string
     }
   }
 }
