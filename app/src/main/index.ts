@@ -20,6 +20,7 @@ const state = {
   sharerDisplayId: null as number | null,
   sharerAspect: settings.sharerAspect ?? null,
   calRect: settings.calRect ?? null,
+  sharerRect: settings.sharerRect ?? null,
   pointing: false,
   error: null as string | null
 }
@@ -29,6 +30,7 @@ let mainWin: BrowserWindow | null = null
 let overlayWin: BrowserWindow | null = null
 let pointerWin: BrowserWindow | null = null
 let calWin: BrowserWindow | null = null
+let calTarget: 'viewer' | 'sharer' = 'viewer'
 let tray: Tray | null = null
 let quitting = false
 
@@ -43,7 +45,32 @@ function pinOverlayOnTop(win: BrowserWindow): void {
   win.setAlwaysOnTop(true, 'screen-saver')
   if (process.platform === 'darwin') {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  } else if (process.platform === 'win32') {
+    // Windows:會取得焦點的 overlay(校準/指點)一旦取得焦點,工作列會被彈到最上層
+    // 蓋住底部那條,導致該處框不到/畫不到 → 每次取得焦點就重新釘頂壓回去
+    win.on('focus', () => {
+      win.setAlwaysOnTop(true, 'screen-saver')
+      win.moveTop()
+    })
   }
+}
+
+// 把視窗座標(相對某視窗左上角)夾在該視窗範圍內,避免超出螢幕
+function clampRectToBounds(r: Rect, b: Rect): Rect {
+  const x = Math.max(b.x, Math.min(r.x, b.x + b.width))
+  const y = Math.max(b.y, Math.min(r.y, b.y + b.height))
+  return {
+    x,
+    y,
+    width: Math.min(r.width, b.x + b.width - x),
+    height: Math.min(r.height, b.y + b.height - y)
+  }
+}
+
+// 分享者 overlay 實際覆蓋範圍:自訂區域優先,否則整個選定螢幕
+function sharerBounds(): Rect {
+  const d = getSelectedDisplay()
+  return state.sharerRect ?? { x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height }
 }
 
 function loadPage(win: BrowserWindow, page: string): void {
@@ -54,6 +81,7 @@ function loadPage(win: BrowserWindow, page: string): void {
 
 function currentStatus(): AppStatus {
   let displays: AppStatus['displays']
+  let sharerRegion: AppStatus['sharerRegion']
   if (state.role === 'sharer') {
     const primaryId = screen.getPrimaryDisplay().id
     displays = screen.getAllDisplays().map((d, i) => ({
@@ -61,6 +89,8 @@ function currentStatus(): AppStatus {
       label: `螢幕 ${i + 1}(${d.size.width}×${d.size.height}${d.id === primaryId ? ',主螢幕' : ''})`,
       selected: d.id === state.sharerDisplayId
     }))
+    const b = sharerBounds()
+    sharerRegion = { custom: !!state.sharerRect, width: b.width, height: b.height }
   }
   return {
     role: state.role,
@@ -72,6 +102,7 @@ function currentStatus(): AppStatus {
     calibrated: !!state.calRect,
     pointing: state.pointing,
     displays,
+    sharerRegion,
     error: state.error
   }
 }
@@ -103,11 +134,14 @@ function overlayWindowOptions(bounds: Rect): Electron.BrowserWindowConstructorOp
 function sendMeta(): void {
   if (state.role !== 'sharer' || !socket?.connected || !state.roomCode) return
   const d = getSelectedDisplay()
+  // 有自訂區域就用區域比例;否則用整個螢幕比例
+  const width = state.sharerRect ? state.sharerRect.width : d.size.width
+  const height = state.sharerRect ? state.sharerRect.height : d.size.height
   const meta: MetaEvent = {
     kind: 'sharer-info',
-    aspect: d.size.width / d.size.height,
-    width: d.size.width,
-    height: d.size.height
+    aspect: width / height,
+    width,
+    height
   }
   socket.emit('meta', meta)
 }
@@ -115,12 +149,12 @@ function sendMeta(): void {
 // ---- 分享者端:全螢幕透明點擊穿透 overlay ----
 function ensureOverlay(): void {
   if (state.role !== 'sharer') return
-  const d = getSelectedDisplay()
+  const b = sharerBounds()
   if (overlayWin && !overlayWin.isDestroyed()) {
-    overlayWin.setBounds(d.bounds)
+    overlayWin.setBounds(b)
     return
   }
-  overlayWin = new BrowserWindow({ ...overlayWindowOptions(d.bounds), focusable: false })
+  overlayWin = new BrowserWindow({ ...overlayWindowOptions(b), focusable: false })
   pinOverlayOnTop(overlayWin)
   overlayWin.setIgnoreMouseEvents(true)
   overlayWin.on('closed', () => {
@@ -167,6 +201,46 @@ function stopPointing(): void {
 function closeCalibration(): void {
   calWin?.destroy()
   calWin = null
+}
+
+// 開啟校準視窗(觀看者=在游標所在螢幕框 Discord 影像;分享者=在選定螢幕框標記範圍)
+function openCalibration(target: 'viewer' | 'sharer'): void {
+  if (target === 'viewer' && state.role !== 'viewer') return
+  if (target === 'sharer' && state.role !== 'sharer') return
+  stopPointing()
+  closeCalibration()
+  calTarget = target
+
+  const d =
+    target === 'sharer'
+      ? getSelectedDisplay()
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  // 前次範圍(絕對座標):分享者預設整個螢幕,觀看者預設上次校準框
+  const prev: Rect | null =
+    target === 'sharer'
+      ? state.sharerRect ?? { x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height }
+      : state.calRect
+  const aspect = target === 'sharer' ? null : state.sharerAspect
+
+  calWin = new BrowserWindow(overlayWindowOptions(d.bounds))
+  pinOverlayOnTop(calWin)
+  calWin.on('closed', () => {
+    calWin = null
+  })
+  calWin.webContents.on('did-finish-load', () => {
+    if (!calWin) return
+    const b = calWin.getBounds()
+    // 絕對座標 → 視窗內座標;若前次範圍不在這台螢幕上就當作沒有
+    let rect: Rect | null = null
+    if (prev) {
+      const within =
+        prev.x < b.x + b.width && prev.x + prev.width > b.x && prev.y < b.y + b.height && prev.y + prev.height > b.y
+      if (within) rect = { x: prev.x - b.x, y: prev.y - b.y, width: prev.width, height: prev.height }
+    }
+    calWin.webContents.send('calibrate:init', { aspect, rect, allowFull: target === 'sharer', target })
+    calWin.focus()
+  })
+  loadPage(calWin, 'calibrate')
 }
 
 function leaveRoom(notifyServer: boolean): void {
@@ -381,6 +455,10 @@ function registerIpc(): void {
     const did = Number(id)
     if (!Number.isFinite(did)) return { ok: false }
     state.sharerDisplayId = did
+    // 自訂區域是相對舊螢幕的絕對座標,換螢幕就重置為整個螢幕
+    state.sharerRect = null
+    settings.sharerRect = null
+    saveSettings(settings)
     if (overlayWin) ensureOverlay()
     sendMeta()
     broadcast()
@@ -389,35 +467,73 @@ function registerIpc(): void {
 
   ipcMain.handle('viewer:calibrate', () => {
     if (state.role !== 'viewer') return { ok: false }
-    stopPointing()
-    closeCalibration()
-    // 在游標所在的螢幕上開校準層(Discord 通常開在那裡)
-    const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-    calWin = new BrowserWindow(overlayWindowOptions(d.bounds))
-    pinOverlayOnTop(calWin)
-    calWin.on('closed', () => {
-      calWin = null
-    })
-    calWin.webContents.on('did-finish-load', () => {
-      calWin?.webContents.send('calibrate:init', { aspect: state.sharerAspect })
-      calWin?.focus()
-    })
-    loadPage(calWin, 'calibrate')
+    openCalibration('viewer')
     return { ok: true }
   })
 
-  ipcMain.on('calibrate:done', (_e, rect: Rect) => {
-    if (!calWin || !rect || rect.width < 40 || rect.height < 30) {
+  ipcMain.handle('sharer:calibrate', () => {
+    if (state.role !== 'sharer') return { ok: false }
+    openCalibration('sharer')
+    return { ok: true }
+  })
+
+  ipcMain.handle('sharer:reset-region', () => {
+    if (state.role !== 'sharer') return { ok: false }
+    state.sharerRect = null
+    settings.sharerRect = null
+    saveSettings(settings)
+    if (overlayWin) ensureOverlay()
+    sendMeta()
+    broadcast()
+    return { ok: true }
+  })
+
+  ipcMain.on('calibrate:done', (_e, payload: { rect?: Rect; full?: boolean }) => {
+    if (!calWin) return
+    const b = calWin.getBounds()
+    const rect = payload?.rect
+    const full = !!payload?.full
+
+    if (calTarget === 'sharer') {
+      if (full) {
+        state.sharerRect = null
+      } else if (rect && rect.width >= 40 && rect.height >= 30) {
+        state.sharerRect = clampRectToBounds(
+          {
+            x: Math.round(b.x + rect.x),
+            y: Math.round(b.y + rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          },
+          b
+        )
+      } else {
+        closeCalibration()
+        return
+      }
+      settings.sharerRect = state.sharerRect
+      saveSettings(settings)
+      closeCalibration()
+      ensureOverlay()
+      sendMeta()
+      broadcast()
+      return
+    }
+
+    // 觀看者
+    if (!rect || rect.width < 40 || rect.height < 30) {
       closeCalibration()
       return
     }
-    const b = calWin.getBounds()
-    state.calRect = {
-      x: Math.round(b.x + rect.x),
-      y: Math.round(b.y + rect.y),
-      width: Math.round(rect.width),
-      height: Math.round(rect.height)
-    }
+    state.calRect = clampRectToBounds(
+      {
+        x: Math.round(b.x + rect.x),
+        y: Math.round(b.y + rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      },
+      b
+    )
     settings.calRect = state.calRect
     saveSettings(settings)
     closeCalibration()

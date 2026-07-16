@@ -31,13 +31,64 @@
         border-radius: 10px;
         text-align: center;
         pointer-events: none;
+        max-width: 80vw;
       }
       #sel {
         position: fixed;
         border: 2px solid #ff3355;
         background: rgba(255, 51, 85, 0.12);
         box-sizing: border-box;
-        pointer-events: none;
+        cursor: move;
+      }
+      .handle {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        margin: -8px;
+        background: #fff;
+        border: 2px solid #ff3355;
+        border-radius: 3px;
+        box-sizing: border-box;
+      }
+      .h-nw {
+        left: 0;
+        top: 0;
+        cursor: nwse-resize;
+      }
+      .h-n {
+        left: 50%;
+        top: 0;
+        cursor: ns-resize;
+      }
+      .h-ne {
+        left: 100%;
+        top: 0;
+        cursor: nesw-resize;
+      }
+      .h-w {
+        left: 0;
+        top: 50%;
+        cursor: ew-resize;
+      }
+      .h-e {
+        left: 100%;
+        top: 50%;
+        cursor: ew-resize;
+      }
+      .h-sw {
+        left: 0;
+        top: 100%;
+        cursor: nesw-resize;
+      }
+      .h-s {
+        left: 50%;
+        top: 100%;
+        cursor: ns-resize;
+      }
+      .h-se {
+        left: 100%;
+        top: 100%;
+        cursor: nwse-resize;
       }
       #dims {
         position: absolute;
@@ -48,16 +99,59 @@
         background: rgba(0, 0, 0, 0.5);
         padding: 2px 6px;
         border-radius: 4px;
+        pointer-events: none;
+      }
+      #toolbar {
+        position: fixed;
+        bottom: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        background: rgba(20, 20, 25, 0.9);
+        padding: 10px 14px;
+        border-radius: 12px;
+      }
+      #toolbar button {
+        font: 14px system-ui, 'Microsoft JhengHei', sans-serif;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      #btn-ok {
+        background: #ff3355;
+        color: #fff;
+      }
+      #btn-cancel,
+      #btn-full {
+        background: #3a3a44;
+        color: #eee;
       }
     </style>
   </head>
   <body>
     <div id="dim"></div>
-    <div id="sel" hidden><span id="dims"></span></div>
+    <div id="sel" hidden>
+      <span class="handle h-nw" data-h="nw"></span>
+      <span class="handle h-n" data-h="n"></span>
+      <span class="handle h-ne" data-h="ne"></span>
+      <span class="handle h-w" data-h="w"></span>
+      <span class="handle h-e" data-h="e"></span>
+      <span class="handle h-sw" data-h="sw"></span>
+      <span class="handle h-s" data-h="s"></span>
+      <span class="handle h-se" data-h="se"></span>
+      <span id="dims"></span>
+    </div>
     <div id="hint">
-      按住左鍵,框出 Discord 影片的「實際影像範圍」,放開完成;Esc 取消
+      <span id="hint-main"></span>
       <br />
       <span id="aspect-hint"></span>
+    </div>
+    <div id="toolbar">
+      <button id="btn-full" hidden>整個螢幕</button>
+      <button id="btn-ok">確定 (Enter)</button>
+      <button id="btn-cancel">取消 (Esc)</button>
     </div>
     <script type="module" src="./src/calibrate.ts"></script>
   </body>

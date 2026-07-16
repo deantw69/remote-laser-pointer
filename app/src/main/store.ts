@@ -7,6 +7,7 @@ export type Rect = { x: number; y: number; width: number; height: number }
 export type Settings = {
   serverUrl: string
   calRect?: Rect | null
+  sharerRect?: Rect | null
   sharerAspect?: number | null
 }
 

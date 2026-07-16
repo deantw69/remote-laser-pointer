@@ -22,6 +22,12 @@ export type DisplayInfo = {
   selected: boolean
 }
 
+export type SharerRegion = {
+  custom: boolean
+  width: number
+  height: number
+}
+
 export type AppStatus = {
   role: Role | null
   serverUrl: string
@@ -32,5 +38,6 @@ export type AppStatus = {
   calibrated: boolean
   pointing: boolean
   displays?: DisplayInfo[]
+  sharerRegion?: SharerRegion | null
   error?: string | null
 }

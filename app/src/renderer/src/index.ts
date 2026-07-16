@@ -53,6 +53,10 @@ function render(): void {
     }
     const cur = displays.find((d) => d.selected)
     if (cur) sel.value = String(cur.id)
+    const reg = st.sharerRegion
+    $('s-cal-info').textContent = reg?.custom
+      ? `自訂 ${Math.round(reg.width)}×${Math.round(reg.height)}`
+      : '整個螢幕'
   }
 }
 
@@ -94,6 +98,8 @@ $('s-leave').addEventListener('click', () => void window.api.invoke('room:leave'
 $('v-back').addEventListener('click', () => void window.api.invoke('role:set', null))
 $('s-back').addEventListener('click', () => void window.api.invoke('role:set', null))
 $('v-cal').addEventListener('click', () => void window.api.invoke('viewer:calibrate'))
+$('s-cal').addEventListener('click', () => void window.api.invoke('sharer:calibrate'))
+$('s-cal-reset').addEventListener('click', () => void window.api.invoke('sharer:reset-region'))
 $<HTMLSelectElement>('s-display').addEventListener('change', (e) => {
   void window.api.invoke('sharer:set-display', Number((e.target as HTMLSelectElement).value))
 })
