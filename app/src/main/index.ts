@@ -2,6 +2,7 @@ import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
 import { uIOhook } from 'uiohook-napi'
+import { installClickSuppressor, setSuppress, uninstallClickSuppressor } from './clickSuppressor'
 import { Socket, io } from 'socket.io-client'
 import type { AppStatus, Mark, MetaEvent, Role, RoomInfo } from '../shared/protocol'
 import { loadSettings, saveSettings } from './store'
@@ -315,6 +316,10 @@ function startPointing(): void {
   })
   loadPage(pointerWin, 'pointer')
   globalShortcut.register('Escape', () => stopPointing())
+  // 先裝點擊抑制 hook、再啟 uiohook:uiohook 較晚安裝→較早被呼叫(先驅動手勢),
+  // 抑制 hook 較早安裝→較晚被呼叫,吞掉左鍵遞送到下層
+  installClickSuppressor()
+  setSuppress(true)
   startHook()
   state.pointing = true
   broadcast()
@@ -324,6 +329,8 @@ function stopPointing(): void {
   if (!state.pointing && !pointerWin) return
   state.pointing = false
   stopHook()
+  setSuppress(false)
+  uninstallClickSuppressor()
   globalShortcut.unregister('Escape')
   if (socket?.connected) {
     socket.emit('pointer', { t: 'stroke-end' } satisfies Mark)
