@@ -133,3 +133,56 @@ button.link:hover {
 #v-pointing {
   font-weight: 600;
 }
+details.advanced {
+  margin-top: 14px;
+}
+details.advanced summary {
+  color: #8a8a98;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+details.advanced summary:hover {
+  color: #e8e8ee;
+}
+details.advanced .field {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+.roomlist {
+  margin: 8px 0;
+  color: #9a9aa8;
+  font-size: 13px;
+}
+button.room-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: #14151b;
+  border: 1px solid #33364a;
+  border-radius: 8px;
+  color: #e8e8ee;
+  font: inherit;
+  cursor: pointer;
+}
+button.room-item:hover {
+  background: #22242e;
+  border-color: #ff3355;
+}
+button.room-item .known {
+  color: #4caf78;
+  font-size: 12px;
+}
+#v-join-box {
+  margin: 8px 0;
+}
+#s-pass-gen {
+  width: auto;
+  flex: 0 0 auto;
+  cursor: pointer;
+}

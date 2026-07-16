@@ -10,25 +10,35 @@
       <section id="screen-role">
         <h1>🔴 遠端雷射筆</h1>
         <p class="sub">在朋友分享的畫面上直接圈點指位</p>
-        <label class="field">
-          伺服器網址
-          <input id="server-url" spellcheck="false" placeholder="https://xxx.onrender.com" />
-        </label>
         <button id="btn-viewer" class="big">我是觀看者(出手指人)</button>
         <button id="btn-sharer" class="big">我是分享者(被指畫面)</button>
+        <details class="advanced">
+          <summary>進階設定</summary>
+          <label class="field">
+            伺服器網址
+            <input id="server-url" spellcheck="false" placeholder="https://xxx.onrender.com" />
+          </label>
+        </details>
       </section>
 
       <section id="screen-viewer" hidden>
         <h2>觀看者</h2>
         <div class="status" id="v-status">—</div>
         <div class="card">
-          <div class="row">
-            <button id="v-create">建立房間</button>
-            <input id="v-code" placeholder="輸入房號" maxlength="6" />
-            <button id="v-join">加入</button>
+          <div class="row" style="justify-content: space-between">
+            <b>線上房間</b>
+            <button id="v-leave" class="link" hidden>離開房間</button>
           </div>
-          <div class="room">房號 <b id="v-room-label">—</b></div>
-          <button id="v-leave" class="link">離開房間</button>
+          <div id="v-rooms" class="roomlist">連線中…</div>
+          <div id="v-join-box" hidden>
+            <div class="hint" id="v-join-target"></div>
+            <div class="row">
+              <input id="v-pass" placeholder="輸入密碼" maxlength="40" spellcheck="false" />
+              <button id="v-pass-ok">加入</button>
+              <button id="v-pass-cancel" class="link">取消</button>
+            </div>
+          </div>
+          <p class="hint">點房間即可加入;連過的房會記住密碼,下次直接進。</p>
         </div>
         <div class="card">
           <div class="row">
@@ -62,15 +72,21 @@
           <p class="hint">預設標記整個螢幕。若只想讓對方的標記落在某塊區域(例如某個視窗),按「校準標記範圍」框選;對方比例會自動跟著改。</p>
         </div>
         <div class="card">
-          <div class="row">
-            <button id="s-create">建立房間</button>
-            <input id="s-code" placeholder="輸入房號" maxlength="6" />
-            <button id="s-join">加入</button>
-          </div>
-          <div class="room">房號 <b id="s-room-label">—</b></div>
-          <button id="s-leave" class="link">離開房間</button>
+          <label class="field">
+            房名(對方會在清單看到)
+            <input id="s-name" spellcheck="false" maxlength="40" />
+          </label>
+          <label class="field">
+            密碼(給對方輸入,固定不變)
+            <div class="row">
+              <input id="s-pass" spellcheck="false" maxlength="40" />
+              <button id="s-pass-gen" title="重新產生密碼">🎲</button>
+            </div>
+          </label>
+          <button id="s-host" class="big">開房</button>
+          <button id="s-leave" class="link" hidden>關閉房間</button>
         </div>
-        <p class="hint">加入房間後掛著即可,對方的標記會直接浮現在你的螢幕上;關閉視窗會縮到系統匣。</p>
+        <p class="hint">開房後把「房名 + 密碼」給對方一次即可;對方之後從清單直接進。掛著即可,對方的標記會浮現在你的螢幕上;關閉視窗會縮到系統匣。</p>
         <button id="s-back" class="link">← 返回角色選擇</button>
       </section>
     </main>

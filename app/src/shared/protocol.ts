@@ -28,12 +28,23 @@ export type SharerRegion = {
   height: number
 }
 
+// 線上房清單項目(觀看者用);房名即識別
+export type RoomInfo = {
+  name: string
+}
+
 export type AppStatus = {
   role: Role | null
   serverUrl: string
   connected: boolean
-  roomCode: string | null
+  roomName: string | null // 目前所在房(分享者=自己開的房、觀看者=加入的房)
   peerPresent: boolean
+  // 分享者:自己的房名與密碼(可編輯,固定不變)
+  sharerName?: string
+  sharerPassword?: string
+  // 觀看者:即時線上房清單、哪些房本機記過密碼
+  rooms?: RoomInfo[]
+  knownRooms?: string[]
   sharerAspect: number | null
   calibrated: boolean
   pointing: boolean

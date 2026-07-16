@@ -9,6 +9,11 @@ export type Settings = {
   calRect?: Rect | null
   sharerRect?: Rect | null
   sharerAspect?: number | null
+  // 分享者:房名(預設電腦名)與密碼(預設系統產生),固定不變直到主動修改
+  roomName?: string
+  roomPassword?: string
+  // 觀看者:記住連過的房 房名→密碼,下次免輸入
+  knownRooms?: Record<string, string>
 }
 
 const DEFAULTS: Settings = { serverUrl: 'https://remote-laser-pointer-relay.onrender.com' }

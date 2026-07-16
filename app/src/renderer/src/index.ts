@@ -3,13 +3,51 @@ import type { AppStatus } from '../../shared/protocol'
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T
 
 let st: AppStatus | null = null
+let pendingJoin: string | null = null // 正在等待輸入密碼的房名
 
 function fmtStatus(s: AppStatus): string {
-  if (s.error) return `⚠ ${s.error}`
+  if (s.error && s.error !== 'need-password') return `⚠ ${s.error}`
   if (!s.connected) return '連線伺服器中…'
-  if (!s.roomCode) return '已連上伺服器,尚未加入房間'
-  if (!s.peerPresent) return `等待對方加入…(把房號 ${s.roomCode} 給對方)`
+  if (!s.roomName) return s.role === 'sharer' ? '尚未開房' : '尚未加入房間'
+  if (!s.peerPresent) {
+    return s.role === 'sharer' ? `已開房「${s.roomName}」,等待對方加入…` : `已加入「${s.roomName}」,等待對方…`
+  }
   return '已與對方連線 ✔'
+}
+
+function renderRooms(s: AppStatus): void {
+  const box = $('v-rooms')
+  if (s.roomName) {
+    box.textContent = `已加入「${s.roomName}」`
+    return
+  }
+  if (!s.connected) {
+    box.textContent = '連線中…'
+    return
+  }
+  const rooms = s.rooms ?? []
+  const known = new Set(s.knownRooms ?? [])
+  if (rooms.length === 0) {
+    box.textContent = '目前沒有線上房間,等分享者開房後會自動出現。'
+    return
+  }
+  box.innerHTML = ''
+  for (const r of rooms) {
+    const row = document.createElement('button')
+    row.className = 'room-item'
+    row.textContent = r.name
+    if (known.has(r.name)) {
+      const tag = document.createElement('span')
+      tag.className = 'known'
+      tag.textContent = '已記住 ✔'
+      row.appendChild(tag)
+      row.title = '已記住密碼,點一下直接加入'
+    } else {
+      row.title = '點一下加入(需輸入密碼)'
+    }
+    row.addEventListener('click', () => void tryJoin(r.name))
+    box.appendChild(row)
+  }
 }
 
 function render(): void {
@@ -26,7 +64,8 @@ function render(): void {
 
   if (st.role === 'viewer') {
     $('v-status').textContent = fmtStatus(st)
-    $('v-room-label').textContent = st.roomCode ?? '—'
+    renderRooms(st)
+    $<HTMLButtonElement>('v-leave').hidden = !st.roomName
     $('v-cal-info').textContent = st.calibrated ? '已校準 ✔' : '尚未校準'
     const hk = window.api.hotkeyLabel
     $('v-pointing').textContent = st.pointing
@@ -36,7 +75,14 @@ function render(): void {
         : '請先完成校準'
   } else {
     $('s-status').textContent = fmtStatus(st)
-    $('s-room-label').textContent = st.roomCode ?? '—'
+    const nameInput = $<HTMLInputElement>('s-name')
+    if (document.activeElement !== nameInput && st.sharerName != null) nameInput.value = st.sharerName
+    const passInput = $<HTMLInputElement>('s-pass')
+    if (document.activeElement !== passInput && st.sharerPassword != null) passInput.value = st.sharerPassword
+    const hosting = !!st.roomName
+    $<HTMLButtonElement>('s-host').hidden = hosting
+    $<HTMLButtonElement>('s-leave').hidden = !hosting
+
     const sel = $<HTMLSelectElement>('s-display')
     const displays = st.displays ?? []
     const stale =
@@ -79,20 +125,56 @@ async function chooseRole(role: 'viewer' | 'sharer'): Promise<void> {
   await window.api.invoke('role:set', role)
 }
 
-async function doRoom(action: 'create' | 'join', statusId: string, codeInputId?: string): Promise<void> {
-  const res =
-    action === 'create'
-      ? await window.api.invoke('room:create')
-      : await window.api.invoke('room:join', $<HTMLInputElement>(codeInputId!).value)
-  if (res && res.ok === false && res.error) $(statusId).textContent = `⚠ ${res.error}`
+type JoinResult = { ok: boolean; error?: string; reason?: string }
+
+async function tryJoin(name: string): Promise<void> {
+  hideJoinBox()
+  const res = (await window.api.invoke('room:join', { name })) as JoinResult
+  if (res.ok) return
+  if (res.error === 'need-password') showJoinBox(name, res.reason)
+  else $('v-status').textContent = `⚠ ${res.error}`
+}
+
+function showJoinBox(name: string, reason?: string): void {
+  pendingJoin = name
+  $('v-join-box').hidden = false
+  $('v-join-target').textContent = reason ? `「${name}」:${reason}` : `輸入「${name}」的密碼`
+  const inp = $<HTMLInputElement>('v-pass')
+  inp.value = ''
+  inp.focus()
+}
+
+function hideJoinBox(): void {
+  pendingJoin = null
+  $('v-join-box').hidden = true
+}
+
+async function submitPass(): Promise<void> {
+  if (!pendingJoin) return
+  const pw = $<HTMLInputElement>('v-pass').value.trim()
+  if (!pw) return
+  const name = pendingJoin
+  const res = (await window.api.invoke('room:join', { name, password: pw })) as JoinResult
+  if (res.ok) {
+    hideJoinBox()
+    return
+  }
+  if (res.error === 'need-password') {
+    $('v-join-target').textContent = `「${name}」:${res.reason ?? '密碼錯誤,請重新輸入'}`
+    $<HTMLInputElement>('v-pass').select()
+  } else {
+    hideJoinBox()
+    $('v-status').textContent = `⚠ ${res.error}`
+  }
+}
+
+async function host(): Promise<void> {
+  const res = (await window.api.invoke('room:create')) as { ok: boolean; error?: string }
+  if (!res.ok && res.error) $('s-status').textContent = `⚠ ${res.error}`
 }
 
 $('btn-viewer').addEventListener('click', () => void chooseRole('viewer'))
 $('btn-sharer').addEventListener('click', () => void chooseRole('sharer'))
-$('v-create').addEventListener('click', () => void doRoom('create', 'v-status'))
-$('v-join').addEventListener('click', () => void doRoom('join', 'v-status', 'v-code'))
-$('s-create').addEventListener('click', () => void doRoom('create', 's-status'))
-$('s-join').addEventListener('click', () => void doRoom('join', 's-status', 's-code'))
 $('v-leave').addEventListener('click', () => void window.api.invoke('room:leave'))
 $('s-leave').addEventListener('click', () => void window.api.invoke('room:leave'))
 $('v-back').addEventListener('click', () => void window.api.invoke('role:set', null))
@@ -100,13 +182,23 @@ $('s-back').addEventListener('click', () => void window.api.invoke('role:set', n
 $('v-cal').addEventListener('click', () => void window.api.invoke('viewer:calibrate'))
 $('s-cal').addEventListener('click', () => void window.api.invoke('sharer:calibrate'))
 $('s-cal-reset').addEventListener('click', () => void window.api.invoke('sharer:reset-region'))
+
+$('s-host').addEventListener('click', () => void host())
+$('s-name').addEventListener('change', (e) =>
+  void window.api.invoke('room:set-name', (e.target as HTMLInputElement).value)
+)
+$('s-pass').addEventListener('change', (e) =>
+  void window.api.invoke('room:set-password', (e.target as HTMLInputElement).value)
+)
+$('s-pass-gen').addEventListener('click', () => void window.api.invoke('room:gen-password'))
+
+$('v-pass-ok').addEventListener('click', () => void submitPass())
+$('v-pass-cancel').addEventListener('click', () => hideJoinBox())
+$<HTMLInputElement>('v-pass').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') void submitPass()
+  else if (e.key === 'Escape') hideJoinBox()
+})
+
 $<HTMLSelectElement>('s-display').addEventListener('change', (e) => {
   void window.api.invoke('sharer:set-display', Number((e.target as HTMLSelectElement).value))
 })
-
-for (const id of ['v-code', 's-code']) {
-  $<HTMLInputElement>(id).addEventListener('input', (e) => {
-    const el = e.target as HTMLInputElement
-    el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
-  })
-}

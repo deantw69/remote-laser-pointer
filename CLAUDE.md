@@ -3,7 +3,7 @@
 朋友用 Discord 分享畫面時,觀看者在自己電腦上圈點,標記即時浮現在分享者的實際螢幕上。
 
 ## 結構
-- `server/`:Node.js ESM + Socket.IO 座標中繼(房間碼配對,只轉發 `pointer`/`meta` 事件,不解析內容)
+- `server/`:Node.js ESM + Socket.IO 座標中繼(以房名配對、密碼驗證、線上房清單推播;只轉發 `pointer`/`meta` 事件,不解析內容)
 - `app/`:Electron + TypeScript + electron-vite,單一 app 雙角色(觀看者/分享者)
 - 協定:`app/src/shared/protocol.ts`,座標一律 0~1 正規化;`Mark` 型別(勿與 DOM 的 PointerEvent 混淆)
 
@@ -14,6 +14,8 @@
 
 ## 關鍵決策
 - 架構 A(疊在 Discord 上、只傳座標)先行;之後可加 WebRTC B 模式,房間伺服器兼任 signaling
+- 配對:**分享者=開房方、觀看者=加入方**(角色決定動作,不再兩邊對稱各自建/加)。以**房名為房間識別**(server `rooms` 以房名為鍵),密碼另存、加入時驗證;房名預設電腦名(`os.hostname()`,`--profile` 會加後綴)、密碼預設 `genPassword()` 6 碼,首次啟動寫入 `settings.json` 後固定不變(可改,改動時 `reHost()` 用新設定重開房)。觀看者靠 `lobby:join`/server 推 `rooms`(只列未滿房)即時看線上房清單;成功加入後把 密碼記進 `settings.knownRooms`(房名→密碼),下次免輸入。server 房名被在線房佔用回 `name-taken`、密碼錯回 `bad-password`;主行程對觀看者用 `need-password` 讓前端跳密碼框。斷線重連:分享者重新 `create-room`、觀看者用記住的密碼 `join-room`(房名穩定故可重連)
+- serverUrl 對一般使用者是多餘欄位,已摺進角色選擇畫面的「進階設定」(`<details>`),首屏只剩選角色
 - overlay 視窗:`transparent + frame:false + alwaysOnTop('screen-saver') + setIgnoreMouseEvents(true)`;座標全用 DIP。macOS 另需 `setVisibleOnAllWorkspaces(true, {visibleOnFullScreen:true})` 才能浮在其他 app 全螢幕與所有 Space 之上(統一由 main 的 `pinOverlayOnTop()` 處理,套用於 overlay/pointer/calibrate 三窗)
 - 全域切換指點模式(Electron globalShortcut 無 keyup 事件,故用切換制,不做「按住即用」);Windows=F8,macOS=Cmd+Shift+L(F8 在 mac 預設是媒體鍵)。切換鍵定義在 main 的 `TOGGLE_HOTKEY`,顯示標籤在 preload 的 `hotkeyLabel`,兩者須一致
 - 設定存 `userData/settings.json`(自寫 store:`app/src/main/store.ts`,不用 electron-store);校準結果 viewer 存 `calRect`、sharer 存 `sharerRect`

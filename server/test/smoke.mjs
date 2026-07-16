@@ -15,12 +15,13 @@ const a = io(URL)
 const b = io(URL)
 await Promise.all([once(a, 'connect'), once(b, 'connect')])
 
-const created = await ack(a, 'create-room')
-if (!created?.ok || !created.code) fail('create-room')
-console.log('room:', created.code)
+const ROOM = { name: 'smoke-room', password: 'PASS42' }
+const created = await ack(a, 'create-room', ROOM)
+if (!created?.ok || created.name !== ROOM.name) fail('create-room')
+console.log('room:', created.name)
 
 const peerJoined = once(a, 'peer-joined')
-const joined = await ack(b, 'join-room', created.code)
+const joined = await ack(b, 'join-room', ROOM)
 if (!joined?.ok) fail('join-room')
 await peerJoined
 console.log('peer-joined ok')
@@ -37,12 +38,15 @@ const meta = await gotMetaAtA
 if (meta?.kind !== 'sharer-info' || meta.width !== 1920) fail('relay meta b->a')
 console.log('meta relay ok')
 
-const notFound = await ack(b, 'join-room', 'ZZZZZZ')
+const notFound = await ack(b, 'join-room', { name: 'ZZZZZZ', password: 'x' })
 if (notFound?.ok || notFound?.error !== 'not-found') fail('not-found check')
+
+const badPass = await ack(b, 'join-room', { name: ROOM.name, password: 'WRONG' })
+if (badPass?.ok || badPass?.error !== 'bad-password') fail('bad-password check')
 
 const c = io(URL)
 await once(c, 'connect')
-const full = await ack(c, 'join-room', created.code)
+const full = await ack(c, 'join-room', ROOM)
 if (full?.ok || full?.error !== 'full') fail('full check')
 console.log('room limit ok')
 

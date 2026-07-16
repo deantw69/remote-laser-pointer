@@ -1,7 +1,8 @@
+import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
 import { Socket, io } from 'socket.io-client'
-import type { AppStatus, Mark, MetaEvent, Role } from '../shared/protocol'
+import type { AppStatus, Mark, MetaEvent, Role, RoomInfo } from '../shared/protocol'
 import { loadSettings, saveSettings } from './store'
 import type { Rect, Settings } from './store'
 
@@ -11,18 +12,40 @@ if (profile) app.setPath('userData', join(app.getPath('userData'), `profile-${pr
 
 const settings: Settings = loadSettings()
 
+// 排除易混淆字元(0/O、1/I)
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function genPassword(): string {
+  return Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('')
+}
+function defaultRoomName(): string {
+  return (hostname() || '我的電腦').replace(/\.local$/, '').slice(0, 40) + (profile ? `-${profile}` : '')
+}
+
+// 分享者房名/密碼:首次啟動產生預設(電腦名 + 隨機碼)並存檔,之後固定不變
+if (!settings.roomName) settings.roomName = defaultRoomName()
+if (!settings.roomPassword) settings.roomPassword = genPassword()
+saveSettings(settings)
+
 const state = {
   role: null as Role | null,
   serverUrl: settings.serverUrl,
   connected: false,
-  roomCode: null as string | null,
+  roomName: null as string | null,
   peerPresent: false,
+  sharerName: settings.roomName,
+  sharerPassword: settings.roomPassword,
+  rooms: [] as RoomInfo[],
   sharerDisplayId: null as number | null,
   sharerAspect: settings.sharerAspect ?? null,
   calRect: settings.calRect ?? null,
   sharerRect: settings.sharerRect ?? null,
   pointing: false,
   error: null as string | null
+}
+
+function knownRooms(): Record<string, string> {
+  if (!settings.knownRooms) settings.knownRooms = {}
+  return settings.knownRooms
 }
 
 let socket: Socket | null = null
@@ -96,8 +119,12 @@ function currentStatus(): AppStatus {
     role: state.role,
     serverUrl: state.serverUrl,
     connected: state.connected,
-    roomCode: state.roomCode,
+    roomName: state.roomName,
     peerPresent: state.peerPresent,
+    sharerName: state.role === 'sharer' ? state.sharerName : undefined,
+    sharerPassword: state.role === 'sharer' ? state.sharerPassword : undefined,
+    rooms: state.role === 'viewer' ? state.rooms : undefined,
+    knownRooms: state.role === 'viewer' ? Object.keys(knownRooms()) : undefined,
     sharerAspect: state.sharerAspect,
     calibrated: !!state.calRect,
     pointing: state.pointing,
@@ -132,7 +159,7 @@ function overlayWindowOptions(bounds: Rect): Electron.BrowserWindowConstructorOp
 }
 
 function sendMeta(): void {
-  if (state.role !== 'sharer' || !socket?.connected || !state.roomCode) return
+  if (state.role !== 'sharer' || !socket?.connected || !state.roomName) return
   const d = getSelectedDisplay()
   // 有自訂區域就用區域比例;否則用整個螢幕比例
   const width = state.sharerRect ? state.sharerRect.width : d.size.width
@@ -245,10 +272,21 @@ function openCalibration(target: 'viewer' | 'sharer'): void {
 
 function leaveRoom(notifyServer: boolean): void {
   if (notifyServer && socket?.connected) socket.emit('leave-room')
-  state.roomCode = null
+  state.roomName = null
   state.peerPresent = false
   stopPointing()
   destroyOverlay()
+}
+
+// 分享者已在房內時修改房名/密碼:用新設定重新開房(舊房會自動退出)
+function reHost(): void {
+  if (state.role !== 'sharer' || !state.roomName || !socket?.connected) return
+  socket.emit('create-room', { name: state.sharerName, password: state.sharerPassword }, (res?: { ok: boolean; name?: string }) => {
+    if (res?.ok && res.name) {
+      state.roomName = res.name
+      broadcast()
+    }
+  })
 }
 
 function afterRoomJoined(): void {
@@ -269,20 +307,47 @@ function connectSocket(): void {
   s.on('connect', () => {
     state.connected = true
     state.error = null
-    const code = state.roomCode
-    if (code) {
-      // 斷線重連後嘗試回到原房間
-      s.timeout(8000).emit('join-room', code, (err: unknown, res?: { ok: boolean; peers?: number }) => {
-        if (err || !res?.ok) {
-          leaveRoom(false)
-          state.error = '斷線後重新加入房間失敗,請重新建立或加入房間'
-        } else {
-          state.peerPresent = (res.peers ?? 0) > 0
-          afterRoomJoined()
-        }
-        broadcast()
-      })
+    if (state.role === 'viewer') s.emit('lobby:join')
+    const name = state.roomName
+    if (name) {
+      // 斷線重連後嘗試回到原房間:分享者重新開房、觀看者用記住的密碼重新加入
+      if (state.role === 'sharer') {
+        s.timeout(8000).emit(
+          'create-room',
+          { name: state.sharerName, password: state.sharerPassword },
+          (err: unknown, res?: { ok: boolean; name?: string }) => {
+            if (err || !res?.ok) {
+              leaveRoom(false)
+              state.error = '斷線後重新開房失敗,請重新開房'
+            } else {
+              state.roomName = res.name ?? name
+              afterRoomJoined()
+            }
+            broadcast()
+          }
+        )
+      } else {
+        const pw = knownRooms()[name] ?? ''
+        s.timeout(8000).emit(
+          'join-room',
+          { name, password: pw },
+          (err: unknown, res?: { ok: boolean; peers?: number }) => {
+            if (err || !res?.ok) {
+              leaveRoom(false)
+              state.error = '斷線後重新加入房間失敗,請重新加入'
+            } else {
+              state.peerPresent = (res.peers ?? 0) > 0
+              afterRoomJoined()
+            }
+            broadcast()
+          }
+        )
+      }
     }
+    broadcast()
+  })
+  s.on('rooms', (list: unknown) => {
+    state.rooms = Array.isArray(list) ? (list as RoomInfo[]) : []
     broadcast()
   })
   s.on('disconnect', () => {
@@ -359,7 +424,7 @@ function createMainWindow(): void {
   })
   mainWin.on('close', (e) => {
     // 分享者在房間內關窗 → 縮到系統匣,overlay 繼續運作
-    if (!quitting && state.role === 'sharer' && state.roomCode) {
+    if (!quitting && state.role === 'sharer' && state.roomName) {
       e.preventDefault()
       ensureTray()
       mainWin?.hide()
@@ -406,42 +471,121 @@ function registerIpc(): void {
     return { ok: true }
   })
 
+  // 分享者開房:用自己的房名+密碼
   ipcMain.handle('room:create', async () => {
+    if (state.role !== 'sharer') return { ok: false, error: '僅分享者可開房' }
     if (!socket?.connected) return { ok: false, error: '尚未連上伺服器' }
     return await new Promise((resolve) => {
-      socket!.timeout(8000).emit('create-room', (err: unknown, res?: { ok: boolean; code?: string }) => {
-        if (err || !res?.ok || !res.code) return resolve({ ok: false, error: '建立房間失敗,請稍後再試' })
-        state.roomCode = res.code
-        state.peerPresent = false
-        state.error = null
-        afterRoomJoined()
-        broadcast()
-        resolve({ ok: true, code: res.code })
-      })
+      socket!.timeout(8000).emit(
+        'create-room',
+        { name: state.sharerName, password: state.sharerPassword },
+        (err: unknown, res?: { ok: boolean; error?: string; name?: string }) => {
+          if (err) return resolve({ ok: false, error: '連線逾時,請再試一次' })
+          if (!res?.ok) {
+            const msg =
+              res?.error === 'name-taken'
+                ? '這個房名已被別人使用,請改個房名'
+                : res?.error === 'bad-name'
+                  ? '請先設定房名'
+                  : res?.error === 'bad-password'
+                    ? '請先設定密碼'
+                    : '開房失敗'
+            return resolve({ ok: false, error: msg })
+          }
+          state.roomName = res.name ?? state.sharerName
+          state.peerPresent = false
+          state.error = null
+          afterRoomJoined()
+          broadcast()
+          resolve({ ok: true })
+        }
+      )
     })
   })
 
-  ipcMain.handle('room:join', async (_e, codeRaw: unknown) => {
-    const code = String(codeRaw ?? '').trim().toUpperCase()
-    if (!code) return { ok: false, error: '請輸入房號' }
+  // 觀看者加入:傳 { name, password? };沒帶密碼就用記住的,都沒有回 need-password 讓前端跳輸入
+  ipcMain.handle('room:join', async (_e, payload: unknown) => {
+    if (state.role !== 'viewer') return { ok: false, error: '僅觀看者可加入' }
+    const p = (payload ?? {}) as { name?: unknown; password?: unknown }
+    const name = String(p.name ?? '').trim()
+    if (!name) return { ok: false, error: '請選擇房間' }
     if (!socket?.connected) return { ok: false, error: '尚未連上伺服器' }
+    const typed = p.password != null && String(p.password) !== ''
+    const password = typed ? String(p.password) : knownRooms()[name] ?? ''
+    if (!password) return { ok: false, error: 'need-password' }
     return await new Promise((resolve) => {
-      socket!
-        .timeout(8000)
-        .emit('join-room', code, (err: unknown, res?: { ok: boolean; error?: string; peers?: number }) => {
+      socket!.timeout(8000).emit(
+        'join-room',
+        { name, password },
+        (err: unknown, res?: { ok: boolean; error?: string; peers?: number }) => {
           if (err) return resolve({ ok: false, error: '連線逾時,請再試一次' })
           if (!res?.ok) {
-            const msg = res?.error === 'not-found' ? '房號不存在' : res?.error === 'full' ? '房間已滿' : '加入失敗'
+            if (res?.error === 'bad-password') {
+              delete knownRooms()[name]
+              saveSettings(settings)
+              broadcast()
+              return resolve({ ok: false, error: 'need-password', reason: '密碼錯誤,請重新輸入' })
+            }
+            const msg = res?.error === 'not-found' ? '房間不存在或已關閉' : res?.error === 'full' ? '房間已滿' : '加入失敗'
             return resolve({ ok: false, error: msg })
           }
-          state.roomCode = code
+          knownRooms()[name] = password
+          saveSettings(settings)
+          state.roomName = name
           state.peerPresent = (res.peers ?? 0) > 0
           state.error = null
           afterRoomJoined()
           broadcast()
           resolve({ ok: true })
-        })
+        }
+      )
     })
+  })
+
+  // 分享者設定房名 / 密碼(存檔且固定;已在房內則以新設定重開房)
+  ipcMain.handle('room:set-name', (_e, v: unknown) => {
+    if (state.role !== 'sharer') return { ok: false }
+    const name = String(v ?? '').trim().slice(0, 40)
+    if (!name || name === state.sharerName) return { ok: true }
+    state.sharerName = name
+    settings.roomName = name
+    saveSettings(settings)
+    reHost()
+    broadcast()
+    return { ok: true }
+  })
+
+  ipcMain.handle('room:set-password', (_e, v: unknown) => {
+    if (state.role !== 'sharer') return { ok: false }
+    const pw = String(v ?? '').trim().slice(0, 40)
+    if (!pw || pw === state.sharerPassword) return { ok: true }
+    state.sharerPassword = pw
+    settings.roomPassword = pw
+    saveSettings(settings)
+    reHost()
+    broadcast()
+    return { ok: true }
+  })
+
+  ipcMain.handle('room:gen-password', () => {
+    if (state.role !== 'sharer') return { ok: false }
+    state.sharerPassword = genPassword()
+    settings.roomPassword = state.sharerPassword
+    saveSettings(settings)
+    reHost()
+    broadcast()
+    return { ok: true }
+  })
+
+  // 觀看者忘記某房記住的密碼
+  ipcMain.handle('room:forget', (_e, v: unknown) => {
+    const name = String(v ?? '').trim()
+    if (name && knownRooms()[name] != null) {
+      delete knownRooms()[name]
+      saveSettings(settings)
+      broadcast()
+    }
+    return { ok: true }
   })
 
   ipcMain.handle('room:leave', () => {
