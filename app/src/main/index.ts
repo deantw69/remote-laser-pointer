@@ -34,6 +34,18 @@ let quitting = false
 
 const PRELOAD = join(__dirname, '../preload/index.js')
 
+// 全域切換指點模式的快捷鍵:mac 的 F8 預設是媒體鍵,故改用 Cmd+Shift+L
+// (顯示用標籤在 preload 的 hotkeyLabel,兩者需一致)
+const TOGGLE_HOTKEY = process.platform === 'darwin' ? 'Command+Shift+L' : 'F8'
+
+// 把透明點擊穿透視窗釘在最上層;macOS 需額外設定才能浮在其他 app 全螢幕與所有 Space 之上
+function pinOverlayOnTop(win: BrowserWindow): void {
+  win.setAlwaysOnTop(true, 'screen-saver')
+  if (process.platform === 'darwin') {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
+}
+
 function loadPage(win: BrowserWindow, page: string): void {
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) void win.loadURL(`${devUrl}/${page}.html`)
@@ -109,7 +121,7 @@ function ensureOverlay(): void {
     return
   }
   overlayWin = new BrowserWindow({ ...overlayWindowOptions(d.bounds), focusable: false })
-  overlayWin.setAlwaysOnTop(true, 'screen-saver')
+  pinOverlayOnTop(overlayWin)
   overlayWin.setIgnoreMouseEvents(true)
   overlayWin.on('closed', () => {
     overlayWin = null
@@ -126,7 +138,7 @@ function destroyOverlay(): void {
 function startPointing(): void {
   if (state.role !== 'viewer' || state.pointing || !state.calRect) return
   pointerWin = new BrowserWindow(overlayWindowOptions(state.calRect))
-  pointerWin.setAlwaysOnTop(true, 'screen-saver')
+  pinOverlayOnTop(pointerWin)
   pointerWin.on('closed', () => {
     pointerWin = null
     if (state.pointing) {
@@ -243,6 +255,8 @@ function disconnectSocket(): void {
 function ensureTray(): void {
   if (tray) return
   const icon = nativeImage.createFromPath(join(__dirname, '../../resources/tray.png'))
+  // macOS menu bar 用 template image(依明暗自動變色)
+  if (process.platform === 'darwin') icon.setTemplateImage(true)
   tray = new Tray(icon)
   tray.setToolTip('遠端雷射筆 — 分享進行中')
   tray.setContextMenu(
@@ -380,7 +394,7 @@ function registerIpc(): void {
     // 在游標所在的螢幕上開校準層(Discord 通常開在那裡)
     const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     calWin = new BrowserWindow(overlayWindowOptions(d.bounds))
-    calWin.setAlwaysOnTop(true, 'screen-saver')
+    pinOverlayOnTop(calWin)
     calWin.on('closed', () => {
       calWin = null
     })
@@ -424,11 +438,17 @@ void app.whenReady().then(() => {
   app.setAppUserModelId('com.philio.remote-laser-pointer')
   registerIpc()
   createMainWindow()
-  globalShortcut.register('F8', () => {
+  globalShortcut.register(TOGGLE_HOTKEY, () => {
     if (state.role !== 'viewer') return
     if (state.pointing) stopPointing()
     else startPointing()
   })
+})
+
+// macOS:從 Dock 重新點開時顯示主視窗
+app.on('activate', () => {
+  if (mainWin && !mainWin.isDestroyed()) mainWin.show()
+  else createMainWindow()
 })
 
 app.on('before-quit', () => {

@@ -11,7 +11,9 @@ const api = {
     return () => {
       ipcRenderer.removeListener(channel, listener)
     }
-  }
+  },
+  // 指點模式切換鍵的顯示標籤(需與 main 的 TOGGLE_HOTKEY 一致)
+  hotkeyLabel: process.platform === 'darwin' ? '⌘⇧L' : 'F8'
 }
 
 contextBridge.exposeInMainWorld('api', api)

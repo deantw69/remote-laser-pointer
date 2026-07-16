@@ -61,6 +61,9 @@ window.addEventListener('mouseup', (e) => {
   downPx = null
 })
 
+const hintEl = document.getElementById('hint')
+if (hintEl) hintEl.textContent = `指點模式:點=圈圈|拖=畫線|移動=雷射點|Esc / ${window.api.hotkeyLabel} 結束`
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') window.api.send('pointer:exit')
 })

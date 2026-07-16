@@ -28,10 +28,11 @@ function render(): void {
     $('v-status').textContent = fmtStatus(st)
     $('v-room-label').textContent = st.roomCode ?? '—'
     $('v-cal-info').textContent = st.calibrated ? '已校準 ✔' : '尚未校準'
+    const hk = window.api.hotkeyLabel
     $('v-pointing').textContent = st.pointing
-      ? '🔴 指點模式進行中(F8 / Esc 結束)'
+      ? `🔴 指點模式進行中(${hk} / Esc 結束)`
       : st.calibrated
-        ? '按 F8 開始指點'
+        ? `按 ${hk} 開始指點`
         : '請先完成校準'
   } else {
     $('s-status').textContent = fmtStatus(st)
@@ -54,6 +55,10 @@ function render(): void {
     if (cur) sel.value = String(cur.id)
   }
 }
+
+// 把靜態提示文字裡的 F8 換成平台對應鍵
+$('v-pointing-hint').textContent =
+  `指點模式:點一下=圈圈、按住拖曳=畫線、移動=雷射點;Esc / ${window.api.hotkeyLabel} 結束。`
 
 window.api.on('status', (s) => {
   st = s as AppStatus
