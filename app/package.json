@@ -39,7 +39,8 @@
       {
         "provider": "github",
         "owner": "deantw69",
-        "repo": "remote-laser-pointer"
+        "repo": "remote-laser-pointer",
+        "releaseType": "release"
       }
     ],
     "asarUnpack": [

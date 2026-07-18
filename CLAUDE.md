@@ -34,7 +34,7 @@
 - app 預設 serverUrl 即上述網址(`app/src/main/store.ts` 的 DEFAULTS)
 
 ## App 自動更新(`app/src/main/updater.ts`)
-- 更新來源 = 本 repo(public)的 **GitHub Releases**,`package.json` `build.publish` 設 github provider(owner `deantw69`);electron-builder 打包時據此產 `latest.yml`/`latest-mac.yml`,使用者端 electron-updater 靠它判斷版本(免 token)
+- 更新來源 = 本 repo(public)的 **GitHub Releases**,`package.json` `build.publish` 設 github provider(owner `deantw69`,`releaseType: release`);electron-builder 打包時據此產 `latest.yml`/`latest-mac.yml`,使用者端 electron-updater 靠它判斷版本(免 token)。**注意**:electron-builder 預設把 Release 建成 **draft**(draft 狀態 autoUpdater 看不到),故設 `releaseType: release` 讓 `release:win` 直接上線;若忘了設,發完要手動 `gh release edit v<版本> --draft=false`
 - **平台分兩套**(沿用專案 `process.platform` 風格):
   - **win32**:`electron-updater` autoUpdater(NSIS)。`autoDownload=false`+`autoInstallOnAppQuit=false`,流程 `checkForUpdates`→`update-available` dialog 問下載→`downloadUpdate`→`update-downloaded` dialog 問 `quitAndInstall`。electron-updater 走**延遲 `require`**(比照 koffi/uiohook),不影響 dev 與非 win32
   - **darwin**:未簽章(`identity:null`)`quitAndInstall` 會失敗,故**不用** electron-updater;改 `fetch` GitHub API `releases/latest` 比 `tag_name` 與 `app.getVersion()`,較新則 dialog→`shell.openExternal` Release 頁手動下載。啟動不自動查(避免每次連網),只在手動檢查時查
