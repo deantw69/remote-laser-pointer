@@ -110,6 +110,41 @@ function render(): void {
 $('v-pointing-hint').textContent =
   `指點模式:點一下=圈圈、按住拖曳=畫線、移動=雷射點;Esc / ${window.api.hotkeyLabel} 結束。`
 
+void window.api.invoke('app:version').then((v) => {
+  $('app-version').textContent = `v${v}`
+})
+
+type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'downloading'; percent: number }
+  | { state: 'latest' }
+  | { state: 'error'; message: string }
+
+function fmtUpdate(u: UpdateStatus): string {
+  switch (u.state) {
+    case 'checking':
+      return '檢查中…'
+    case 'available':
+      return `有新版 v${u.version}`
+    case 'downloading':
+      return `下載中… ${u.percent}%`
+    case 'latest':
+      return '已是最新版'
+    case 'error':
+      return `⚠ ${u.message}`
+    default:
+      return ''
+  }
+}
+
+window.api.on('update:status', (u) => {
+  $('update-status').textContent = fmtUpdate(u as UpdateStatus)
+})
+
+$('btn-update').addEventListener('click', () => void window.api.invoke('update:check'))
+
 window.api.on('status', (s) => {
   st = s as AppStatus
   render()

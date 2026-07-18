@@ -11,9 +11,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "build:win": "electron-vite build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
+    "release:win": "electron-vite build && electron-builder --win --publish always",
+    "release:mac": "electron-vite build && electron-builder --mac --publish always",
     "icon": "node scripts/gen-app-icon.mjs && bash scripts/gen-icns.sh"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "koffi": "^3.1.1",
     "socket.io-client": "^4.8.0",
     "uiohook-napi": "^1.5.5"
@@ -32,6 +35,13 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "deantw69",
+        "repo": "remote-laser-pointer"
+      }
+    ],
     "asarUnpack": [
       "**/*.node",
       "**/node_modules/uiohook-napi/**",

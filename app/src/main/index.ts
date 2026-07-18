@@ -2,6 +2,7 @@ import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, globalShortcut, ipcMain, nativeImage, screen } from 'electron'
 import { installClickSuppressor, setSuppress, uninstallClickSuppressor } from './clickSuppressor'
+import { checkForUpdatesManual, initUpdater } from './updater'
 import { Socket, io } from 'socket.io-client'
 import type { AppStatus, Mark, MetaEvent, Role, RoomInfo } from '../shared/protocol'
 import { loadSettings, saveSettings } from './store'
@@ -533,6 +534,7 @@ function ensureTray(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '顯示主視窗', click: () => mainWin?.show() },
+      { label: '檢查更新…', click: () => checkForUpdatesManual() },
       { type: 'separator' },
       {
         label: '結束',
@@ -574,6 +576,8 @@ function createMainWindow(): void {
 // ---- IPC ----
 function registerIpc(): void {
   ipcMain.handle('status:get', () => currentStatus())
+  ipcMain.handle('app:version', () => app.getVersion())
+  ipcMain.handle('update:check', () => checkForUpdatesManual())
 
   ipcMain.handle('serverUrl:set', (_e, url: unknown) => {
     const u = String(url ?? '').trim()
@@ -830,6 +834,7 @@ void app.whenReady().then(() => {
   app.setAppUserModelId('com.philio.remote-laser-pointer')
   registerIpc()
   createMainWindow()
+  initUpdater(() => mainWin)
   globalShortcut.register(TOGGLE_HOTKEY, () => {
     if (state.role !== 'viewer') return
     if (state.pointing) stopPointing()

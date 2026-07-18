@@ -60,6 +60,17 @@ h2 {
   font-size: 12px;
   margin: 8px 0 0;
 }
+.updatebar {
+  margin-top: 16px;
+}
+.updatebar .hint {
+  margin: 0;
+}
+.ver {
+  color: #6a6a78;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+}
 .field {
   display: block;
   color: #9a9aa8;

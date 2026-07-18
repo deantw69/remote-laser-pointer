@@ -33,6 +33,15 @@
 - Render GitHub App 已授權此 repo,push 到 main 會自動部署(Auto-Deploy: On Commit;2026-07-16 已實測)
 - app 預設 serverUrl 即上述網址(`app/src/main/store.ts` 的 DEFAULTS)
 
+## App 自動更新(`app/src/main/updater.ts`)
+- 更新來源 = 本 repo(public)的 **GitHub Releases**,`package.json` `build.publish` 設 github provider(owner `deantw69`);electron-builder 打包時據此產 `latest.yml`/`latest-mac.yml`,使用者端 electron-updater 靠它判斷版本(免 token)
+- **平台分兩套**(沿用專案 `process.platform` 風格):
+  - **win32**:`electron-updater` autoUpdater(NSIS)。`autoDownload=false`+`autoInstallOnAppQuit=false`,流程 `checkForUpdates`→`update-available` dialog 問下載→`downloadUpdate`→`update-downloaded` dialog 問 `quitAndInstall`。electron-updater 走**延遲 `require`**(比照 koffi/uiohook),不影響 dev 與非 win32
+  - **darwin**:未簽章(`identity:null`)`quitAndInstall` 會失敗,故**不用** electron-updater;改 `fetch` GitHub API `releases/latest` 比 `tag_name` 與 `app.getVersion()`,較新則 dialog→`shell.openExternal` Release 頁手動下載。啟動不自動查(避免每次連網),只在手動檢查時查
+- `initUpdater(()=>mainWin)` 於 `whenReady` 建主視窗後呼叫;`if(!app.isPackaged)return`(dev 不檢查)。win32 啟動即靜默自動檢查(有新版才彈窗);`manualCheck` 旗標:手動檢查查無新版/出錯才彈 dialog,自動則靜默
+- 手動入口:tray 選單「檢查更新…」+ 主視窗角色選擇畫面「檢查更新」鈕→IPC `update:check`→`checkForUpdatesManual()`。主視窗顯示版本號:IPC `app:version`(`app.getVersion()`);狀態經 `mainWin.webContents.send('update:status', …)` 廣播,renderer `api.on('update:status')` 顯示(preload 免改,`invoke`/`on` 是任意 channel passthrough)
+- **發布流程**:先升 `app/package.json` `version`(不升使用者收不到)→設 `GH_TOKEN`(repo 權限 PAT)→`npm run release:win`/`release:mac`(`electron-builder --publish always`)。備選:`build:win` 後 `gh release create v<版本> release/*.exe release/latest.yml`(務必含 `latest.yml`)。mac 要全自動需 Apple 簽章+公證
+
 ## 環境備註
 - `npm install` 時 Electron 二進位解壓曾失敗(zip 有下載到 cache 但 dist 不完整/為空):症狀是 `dev` 報 `Error: Electron uninstall`。修法 = 用 cache 內完整的 zip 手動解壓到 `node_modules/electron/dist`,再寫 `path.txt`:
   - Windows:`Expand-Archive` cache zip → dist,`path.txt` 內容 `electron.exe`
